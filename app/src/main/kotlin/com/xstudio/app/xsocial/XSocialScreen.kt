@@ -553,8 +553,8 @@ fun XSocialScreen(
                                                         function = "social_messages_page",
                                                         parameters = buildJsonObject {
                                                             put("p_conv", conv.id)
-                                                            putJsonNull("p_before_ts")
-                                                            putJsonNull("p_before_id")
+                                                            put("p_before_ts", JsonNull)
+                                                            put("p_before_id", JsonNull)
                                                             put("p_limit", 30)
                                                         }
                                                     ).decodeList<DirectMessage>()
