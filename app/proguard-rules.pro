@@ -1,0 +1,3 @@
+-keepattributes *Annotation*,InnerClasses,EnclosingMethod,Signature
+-keep class com.xstudio.app.data.model.** { *; }
+-dontwarn io.ktor.**
