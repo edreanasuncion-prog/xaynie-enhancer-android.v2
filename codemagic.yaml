@@ -1,17 +1,17 @@
+
 workflows:
   android-debug-apk:
     name: X Studio Android Debug APK
     max_build_duration: 60
     instance_type: linux_x2
+
     environment:
       java: 17
       groups:
-        # REQUIRED: create an environment variable group named "xstudio_config" in the Codemagic UI.
-        # It must provide SUPABASE_URL + SUPABASE_ANON_KEY, or XSTUDIO_API_BASE_URL (the app then reads /api/config).
-        # Never put service_role or GEMINI keys in this group.
         - xstudio_config
       vars:
         GRADLE_OPTS: "-Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4096m"
+
     triggering:
       events:
         - push
@@ -22,53 +22,114 @@ workflows:
         - pattern: master
           include: true
           source: true
+
     cache:
       cache_paths:
         - ~/.gradle/caches
         - ~/.gradle/wrapper
+
     scripts:
       - name: Generate ephemeral local.properties
         script: |
           set -e
-          # This repository root must contain settings.gradle.kts (no sub-folder).
-          test -f settings.gradle.kts || { echo "ERROR: settings.gradle.kts not found at repository root"; exit 1; }
+
+          test -f settings.gradle.kts || {
+            echo "ERROR: settings.gradle.kts not found at repository root"
+            exit 1
+          }
+
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-          [ -n "$SUPABASE_URL" ] && echo "SUPABASE_URL=$SUPABASE_URL" >> local.properties
-          [ -n "$SUPABASE_ANON_KEY" ] && echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> local.properties
-          [ -n "$XSTUDIO_API_BASE_URL" ] && echo "XSTUDIO_API_BASE_URL=$XSTUDIO_API_BASE_URL" >> local.properties
+
+          [ -n "$SUPABASE_URL" ] && echo "SUPABASE_URL=$SUPABASE_URL" >> local.properties || true
+          [ -n "$SUPABASE_ANON_KEY" ] && echo "SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY" >> local.properties || true
+          [ -n "$XSTUDIO_API_BASE_URL" ] && echo "XSTUDIO_API_BASE_URL=$XSTUDIO_API_BASE_URL" >> local.properties || true
+
           if { [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; } && [ -z "$XSTUDIO_API_BASE_URL" ]; then
-            echo "ERROR: xstudio_config must define SUPABASE_URL and SUPABASE_ANON_KEY, or XSTUDIO_API_BASE_URL."
-            echo "Without them the app can only show a configuration error."
+            echo "ERROR: Missing Supabase configuration or XSTUDIO_API_BASE_URL."
             exit 1
           fi
-          true
-      - name: Ensure official Gradle wrapper
+
+          echo "Backend configuration validated."
+
+      - name: Ensure official Gradle 8.9 wrapper
         script: |
           set -e
-          # The repo does not ship gradle-wrapper.jar. Generate Gradle's official wrapper if it is missing
-          # or is not the official one (the official jar contains WrapperExecutor).
-          if [ ! -f gradle/wrapper/gradle-wrapper.jar ] || ! unzip -l gradle/wrapper/gradle-wrapper.jar | grep -q WrapperExecutor; then
-            gradle wrapper --gradle-version 8.9 --distribution-type bin
+
+          WRAPPER_JAR="gradle/wrapper/gradle-wrapper.jar"
+          WRAPPER_PROPERTIES="gradle/wrapper/gradle-wrapper.properties"
+          NEED_BOOTSTRAP=false
+
+          mkdir -p gradle/wrapper
+
+          if [ ! -f "$WRAPPER_JAR" ]; then
+            NEED_BOOTSTRAP=true
+          elif ! unzip -tq "$WRAPPER_JAR" >/dev/null 2>&1; then
+            NEED_BOOTSTRAP=true
+          elif ! unzip -Z1 "$WRAPPER_JAR" | grep -qx 'org/gradle/wrapper/WrapperExecutor.class'; then
+            NEED_BOOTSTRAP=true
           fi
+
+          if [ ! -f "$WRAPPER_PROPERTIES" ] || ! grep -q 'gradle-8.9-' "$WRAPPER_PROPERTIES"; then
+            NEED_BOOTSTRAP=true
+          fi
+
+          if [ "$NEED_BOOTSTRAP" = true ]; then
+            echo "Bootstrapping official Gradle 8.9..."
+
+            BOOTSTRAP_DIR="$(mktemp -d)"
+            trap 'rm -rf "$BOOTSTRAP_DIR"' EXIT
+
+            curl -fL --retry 3 \
+              https://services.gradle.org/distributions/gradle-8.9-bin.zip \
+              -o "$BOOTSTRAP_DIR/gradle-8.9-bin.zip"
+
+            unzip -q "$BOOTSTRAP_DIR/gradle-8.9-bin.zip" -d "$BOOTSTRAP_DIR"
+
+            "$BOOTSTRAP_DIR/gradle-8.9/bin/gradle" \
+              --no-daemon \
+              wrapper \
+              --gradle-version 8.9 \
+              --distribution-type bin
+          fi
+
           chmod +x ./gradlew
+
+          echo "Checking Gradle wrapper..."
+
           ./gradlew --version
-      - name: Build Debug APK (:app:assembleDebug)
+
+          ./gradlew --version | grep -q "Gradle 8.9" || {
+            echo "ERROR: Gradle 8.9 verification failed."
+            exit 1
+          }
+
+          echo "Official Gradle 8.9 wrapper verified."
+
+      - name: Build Debug APK
         script: |
           set -e
           ./gradlew :app:assembleDebug --stacktrace
+
       - name: Verify Generated Debug APK Artifact
         script: |
           set -e
+
           APK_PATH="app/build/outputs/apk/debug/app-debug.apk"
+
           if [ ! -f "$APK_PATH" ]; then
             echo "ERROR: Expected APK not found at $APK_PATH"
             exit 1
           fi
+
+          echo "APK successfully generated:"
           ls -lh "$APK_PATH"
+
       - name: Run JVM unit tests
         script: |
           set -e
           ./gradlew :app:testDebugUnitTest --stacktrace
+
     artifacts:
       - app/build/outputs/apk/debug/*.apk
       - app/build/reports/**
+      
