@@ -126,7 +126,7 @@ import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.rpc
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonNull
+import kotlinx.serialization.json.JsonNull
 
 data class XToolItem(
     val id: String,
@@ -385,7 +385,7 @@ fun StudioHomeScreen(
                 val rows = SupabaseModule.client.postgrest.rpc(
                     function = "social_explore_media",
                     parameters = buildJsonObject {
-                        putJsonNull("p_topic")
+                        put("p_topic", JsonNull)
                         put("p_offset", 0)
                         put("p_limit", 6)
                     }
@@ -398,8 +398,8 @@ fun StudioHomeScreen(
                         function = "social_feed",
                         parameters = buildJsonObject {
                             put("p_mode", "explore")
-                            putJsonNull("p_before_ts")
-                            putJsonNull("p_before_id")
+                            put("p_before_ts", JsonNull)
+                            put("p_before_id", JsonNull)
                             put("p_limit", 12)
                         }
                     ).decodeList<SocialPost>()
