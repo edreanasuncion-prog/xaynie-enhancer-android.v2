@@ -1,3 +1,4 @@
+
 package com.xstudio.app
 
 import com.xstudio.app.core.media.MediaStoreExporter
@@ -13,37 +14,68 @@ import org.junit.rules.TemporaryFolder
 import java.io.File
 
 class HistoryAndExportTest {
-    @get:Rule val tmp = TemporaryFolder()
 
-    @Test fun photoTtlIsExactly72Hours() {
+    @get:Rule
+    val tmp = TemporaryFolder()
+
+    @Test
+    fun photoTtlIsExactly72Hours() {
         assertEquals(72L * 60 * 60 * 1000, HistoryFiles.PHOTO_TTL_MS)
         assertEquals(1_000L + 259_200_000L, HistoryFiles.photoExpiryFor(1_000L))
     }
 
-    @Test fun expiryBoundary() {
+    @Test
+    fun expiryBoundary() {
         val exp = HistoryFiles.photoExpiryFor(0L)
+
         assertFalse(HistoryFiles.isExpired(exp, exp - 1))
         assertTrue(HistoryFiles.isExpired(exp, exp))
-        assertFalse(HistoryFiles.isExpired(null, Long.MAX_VALUE)) // videos never expire
+        assertFalse(HistoryFiles.isExpired(null, Long.MAX_VALUE))
     }
 
-    @Test fun pathGuard() {
+    @Test
+    fun pathGuard() {
         val root = tmp.newFolder("app")
-        val inside = File(root, "enhanced_photos/a.jpg").apply { parentFile!!.mkdirs(); writeText("x") }
+
+        val inside = File(root, "enhanced_photos/a.jpg").apply {
+            parentFile!!.mkdirs()
+            writeText("x")
+        }
+
         val outside = tmp.newFile("other.jpg")
         val traversal = File(root, "../other.jpg")
+
         assertTrue(HistoryFiles.isStrictlyInside(root, inside))
         assertFalse(HistoryFiles.isStrictlyInside(root, outside))
         assertFalse(HistoryFiles.isStrictlyInside(root, traversal))
         assertFalse(HistoryFiles.isStrictlyInside(root, root))
     }
 
-    @Test fun mimeTypesFollowExtension() {
-        assertEquals("image/png", MediaStoreExporter.specFor("a.PNG")!!.mimeType)
-        assertEquals("image/jpeg", MediaStoreExporter.specFor("a.jpg")!!.mimeType)
-        assertEquals("video/mp4", MediaStoreExporter.specFor("a.mp4")!!.mimeType)
-        assertEquals(MediaStoreExporter.Kind.VIDEO, MediaStoreExporter.specFor("a.mp4")!!.kind)
-        assertNull(MediaStoreExporter.specFor("a.exe"))
-        assertNotNull(MediaStoreExporter.specFor("a.webp"))
+    @Test
+    fun mimeTypesFollowExtension() {
+        val png = requireNotNull(MediaStoreExporter.specFor("a.PNG")) {
+            "PNG extension should be supported"
+        }
+        val jpg = requireNotNull(MediaStoreExporter.specFor("a.jpg")) {
+            "JPG extension should be supported"
+        }
+        val mp4 = requireNotNull(MediaStoreExporter.specFor("a.mp4")) {
+            "MP4 extension should be supported"
+        }
+        val webp = requireNotNull(MediaStoreExporter.specFor("a.webp")) {
+            "WEBP extension should be supported"
+        }
+
+        assertEquals("image/png", png.mimeType)
+        assertEquals("image/jpeg", jpg.mimeType)
+        assertEquals("video/mp4", mp4.mimeType)
+        assertEquals(MediaStoreExporter.Kind.VIDEO, mp4.kind)
+        assertEquals("image/webp", webp.mimeType)
+        assertEquals(MediaStoreExporter.Kind.IMAGE, webp.kind)
+
+        assertNull(
+            "EXE files must not be supported",
+            MediaStoreExporter.specFor("a.exe")
+        )
     }
 }
